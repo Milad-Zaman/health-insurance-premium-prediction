@@ -9,13 +9,17 @@ in terms of prediction accuracy.
 
 ## Dataset Overview:
 -Samples: 986 individuals
+
 -Target Variable: PremiumPrice (in ₹ INR, The Indian rupee)
 
 Features Used:
 ### Demographic Features
 -Age: Age of the person
+
 -Height: Height in cm
+
 -Weight: Weight in kg
+
 -NumberOfMajorSurgeries: Total number of past major surgeries
 ### Medical/Health Features
 •	Diabetes: 1 if the person has diabetes, else 0
