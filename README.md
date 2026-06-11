@@ -8,14 +8,15 @@ and demographic features. The goal is to identify the best-performing model
 in terms of prediction accuracy.
 
 ## Dataset Overview:
-Samples: 986 individuals
-Target Variable: PremiumPrice (in ₹ INR, The Indian rupee)
+-Samples: 986 individuals
+-Target Variable: PremiumPrice (in ₹ INR, The Indian rupee)
+
 Features Used:
 ### Demographic Features
-•	Age: Age of the person
-•	Height: Height in cm
-•	Weight: Weight in kg
-•	NumberOfMajorSurgeries: Total number of past major surgeries
+-Age: Age of the person
+-Height: Height in cm
+-Weight: Weight in kg
+-NumberOfMajorSurgeries: Total number of past major surgeries
 ### Medical/Health Features
 •	Diabetes: 1 if the person has diabetes, else 0
 •	BloodPressureProblems: 1 if yes, else 0
