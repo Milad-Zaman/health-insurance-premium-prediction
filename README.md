@@ -22,11 +22,17 @@ Features Used:
 
 -NumberOfMajorSurgeries: Total number of past major surgeries
 ### Medical/Health Features
+
 •	Diabetes: 1 if the person has diabetes, else 0
+
 •	BloodPressureProblems: 1 if yes, else 0
+
 •	AnyTransplants: 1 if any transplant done
+
 •	AnyChronicDiseases: 1 if any chronic illness
+
 •	KnownAllergies: 1 if any known allergies
+
 •	HistoryOfCancerInFamily: 1 if yes, else 0
 
 ## Methods & Models
@@ -43,9 +49,13 @@ The project covers the full machine learning pipeline:
 | **PCA** | Principal Component Analysis for dimensionality reduction |
 
 •	Data Cleaning & Normalization
+
 •	Principal Component Analysis (PCA)
+
 •	Cross-Validation (CV-RMSE)
+
 •	Model Evaluation & Comparison
+
 •	Final Test on Holdout Set
 
 ## Tools & Technologies
