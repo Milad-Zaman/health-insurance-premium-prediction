@@ -1,0 +1,1410 @@
+---
+title: "Statistical Machine Learning Project"
+author: "Milad Zaman"
+subtitle: Predicting health insurance premium
+output:
+  html_notebook:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+---
+
+The aim of this project is to build predictive models to estimate the **medical insurance premium price** for individuals based on their **health-related** and **demographic features**. We compare multiple machine learning models—including linear regression, decision trees, ensemble methods, and neural networks—to identify the model with the best prediction performance
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(readr)
+library(dplyr)
+library(psych)
+
+# Load the CSV file
+data <- read_csv("C:/Users/Lenovo/Downloads/Documents/Medical Insurance.csv")
+```
+
+
+# Exploratory Data Analysis (EDA)
+## Data structure
+
+
+```{r echo=TRUE}
+# Check structure of the dataset
+str(data)
+
+# View the first few rows
+head(data)
+
+# View the last few rows
+tail(data)
+
+# Get basic descriptive stats for columns
+describe(data)
+
+# Check for Missing Values
+colSums(is.na(data))
+
+
+
+```
+
+## Descriptive statistics and Visualization.
+
+```{r}
+# Histogram
+hist(data$PremiumPrice, 
+     breaks = 30, 
+     col = "skyblue", 
+     main = "Distribution of Premium Price", 
+     xlab = "Premium Price (INR)")
+
+```
+
+```{r}
+# Set plotting layout: 1 row, 3 columns
+par(mfrow = c(1, 3))
+
+# Boxplots for numeric variables
+boxplot(data$PremiumPrice, 
+        main = "Premium Price", 
+        col = "lightgreen")
+boxplot(data$Height, 
+        main = "Height", 
+        col = "lightblue")
+boxplot(data$Weight, 
+        main = "Weight", 
+        col = "lightcoral")
+# Reset layout to default
+par(mfrow = c(1, 1))
+```
+
+```{r echo=TRUE}
+# Loop through binary features for bar charts
+binary_vars <- c("Diabetes", "BloodPressureProblems", "AnyTransplants", 
+                 "AnyChronicDiseases", "KnownAllergies", 
+                 "HistoryOfCancerInFamily")
+
+par(mfrow = c(2, 3))  # Layout 2x3
+for (var in binary_vars) {
+  barplot(table(data[[var]]), 
+          main = paste("Distribution of", var), 
+          col = c("gray70", "steelblue"), 
+          names.arg = c("No", "Yes"))
+}
+par(mfrow = c(1, 1))  # Reset
+```
+
+```{r}
+#Correlation matrix
+cor_matrix <- cor(data)
+
+#Heatmap
+library(corrplot)
+corrplot(cor_matrix, method = "color", type = "upper", tl.cex = 0.8)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+#Scatterplot: Weight vs Premium
+plot(data$Weight, data$PremiumPrice, 
+     main = "Weight vs Premium Price", 
+     xlab = "Weight", ylab = "Premium Price", 
+     col = "darkgreen", pch = 19)
+#Scatterplot: Age vs Premium
+plot(data$Age, data$PremiumPrice, 
+     main = "Age vs Premium Price", 
+     xlab = "Age", ylab = "Premium Price", col = "darkred", pch = 19)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+library(ggplot2)
+library(ggExtra)
+
+# Convert Diabetes to factor
+data$Diabetes <- as.factor(data$Diabetes)
+
+# Base scatter plot
+p <- ggplot(data, aes(x = Weight, y = PremiumPrice, color = Diabetes)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    title = "Premium Price vs Weight",
+    x = "Weight (kg)",
+    y = "Premium Price (INR)",
+    color = "Diabetes"
+  ) +
+  theme_minimal()
+
+# Add marginal density plots
+ggMarginal(
+  p,
+  type = "density",   
+  groupColour = TRUE,
+  groupFill = TRUE
+)
+
+```
+
+# Models 1 & 2
+```{r}
+library(caret)
+library(ggplot2)
+library(lattice)
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data into training (80%) and test (20%)
+trainIndex <- createDataPartition(data$PremiumPrice, p = 0.8, list = FALSE)
+train <- data[trainIndex, ]
+test <- data[-trainIndex, ]
+
+# Normalize predictors for linear regression
+preProc <- preProcess(train[, -11], method = c("center", "scale"))
+train_norm <- predict(preProc, train[, -11])
+test_norm <- predict(preProc, test[, -11])
+
+# Add target variable back
+train_final <- cbind(train_norm, PremiumPrice = train$PremiumPrice)
+test_final <- cbind(test_norm, PremiumPrice = test$PremiumPrice)
+```
+
+## Linear Regression
+```{r}
+library(Metrics)  # For RMSE
+#train a linear model using 5-fold cross-validation
+model_lm <- train(PremiumPrice ~ ., data = train_final, method = "lm", trControl = trainControl(method = "cv", number = 5))
+
+summary(model_lm)
+```
+The linear regression model explains approximately 63% of the variation in premium prices (R² = 0.627), indicating a reasonably good fit. Statistically significant predictors include Age, Weight, Transplants, Chronic Diseases, and Cancer History, which positively influence premium prices. Other variables such as Diabetes, Allergies, and Height were found to be statistically insignificant. Overall, the model is statistically significant (p < 2.2e-16) and provides meaningful insights into the factors affecting premium costs.
+```{r}
+# Predictions
+pred_lm_train <- predict(model_lm, train_final)
+#extract the CV RMSE values
+pred_lm_cv_rmse <- model_lm$resample$RMSE
+
+# calculate the training loss (RMSE on training data)
+lm_train_rmse <- RMSE(pred_lm_train, train_final$PremiumPrice)
+
+# Actual vs Predicted Plot
+ggplot(data = train_final, aes(x = PremiumPrice, y = pred_lm_train)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Linear Regression: Actual vs Predicted",
+       x = "Actual Premium Price",
+       y = "Predicted Premium Price") +
+  theme_minimal()
+```
+The blue dots generally follow the upward trend of the red dashed line. It means that as the actual premium price increases, the model's predicted premium price also tends to increase. This suggests the model has learned some relationship in the data.
+
+## Regression Tree
+```{r}
+library(rpart)
+library(rpart.plot)
+
+# Train regression tree on original (non-normalized) data
+model_tree <- rpart(PremiumPrice ~ ., data = train, method = "anova")
+
+# Plot the tree
+prp(model_tree,
+    type = 2,           # show variable names in splits
+    extra = 101,        # show RMSE and samples in leaves
+    fallen.leaves = TRUE,
+    faclen = 0,         # do not abbreviate factor levels
+    varlen = 0,         # do not abbreviate variable names
+    shadow.col = "gray",   # Add shadow
+    main = "Regression Tree")
+```
+Age is the most dominant feature, making the initial and most significant split in premium predictions. For younger individuals (Age < 30), AnyChronicDiseases is the next key factor. For older individuals, AnyTransplants, further Age distinctions (around 47), and Weight are highly influential.
+
+```{r}
+#print complexity parameter table
+printcp(model_tree)
+```
+
+```{r}
+#plot of cross-validation error vs. tree complexity.
+plotcp(model_tree)
+```
+### Complexity and Pruning
+To make the tree less complex we can select a complexity parameter that minimizes the xerror.
+The lowest cross-validated error (xerror) is 0.28703 at CP = 0.01, with 8 splits. According to the 1-SE rule; the simplest tree whose error is within 1 standard error (xstd) of that minimum; we can consider simpler trees if their error is within xerror + xstd =0.28703 + 0.044273 = ~0.3313.
+The tree with nsplit = 5 has xerror = 0.33388, which is just over 1-SE range, so the best CP to prune might be 0.01
+(bottom row).
+```{r}
+## Determine the minimum complexity parameter (cp) for pruning
+best_cp <- model_tree$cptable[which.min(model_tree$cptable[,"xerror"]), "CP"]
+
+# Prune the regression tree model using the best cp
+pruned_tree <- prune(model_tree, cp = best_cp)
+prp(pruned_tree,
+    type = 2,           # show variable names in splits
+    extra = 101,        # show RMSE and samples in leaves
+    fallen.leaves = TRUE,
+    faclen = 0,         # do not abbreviate factor levels
+    varlen = 0,         # do not abbreviate variable names
+    shadow.col = "gray",   # Add shadow
+    main = "Regression Tree")
+```
+As we can see the *pruned_tree* is exactly the same with the *model_tree*.  It means that *model_tree* is already using that exact CP internally.
+
+```{r}
+library(ggplot2)
+
+# Predict on training data
+tree_pred <- predict(model_tree, train)
+
+# Create a data frame for plotting
+df_plot <- data.frame(
+  Predicted = tree_pred,
+  Actual = train$PremiumPrice
+)
+
+# Plot using ggplot2
+ggplot(df_plot, aes(x = Predicted, y = Actual)) +
+  geom_point(color = "#0072B2", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    x = "Predicted Premium Price",
+    y = "Actual Premium Price",
+    title = "Regression Tree: Predicted vs Actual"
+  ) +
+  theme_minimal() +
+  theme(axis.line = element_line(color = "#000000"))
+```
+While the predictions generally follow the upward trend of the red "perfect prediction" line, the stepped nature and the scatter indicate the tree captures broad patterns but doesn't perfectly predict each individual price.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Create a grid of Age and Weight values to make predictions on
+age_range <- seq(min(train$Age), max(train$Age), length.out = 100)
+weight_range <- seq(min(train$Weight), max(train$Weight), length.out = 100)
+
+grid <- expand.grid(
+  Age = age_range,
+  Weight = weight_range
+)
+
+# Get median for numeric columns only
+numeric_vars <- train %>%
+  select(-PremiumPrice, -Age, -Weight) %>%
+  select(where(is.numeric)) %>%
+  summarise(across(everything(), ~ median(., na.rm = TRUE))) %>%
+  slice(rep(1, nrow(grid)))
+
+# For non-numeric variables (factors, logicals), pick the most frequent level
+non_numeric_vars <- train %>%
+  select(-PremiumPrice, -Age, -Weight) %>%
+  select(where(Negate(is.numeric))) %>%
+  summarise(across(everything(), ~ as.character(names(sort(table(.), decreasing = TRUE)[1])))) %>%
+  slice(rep(1, nrow(grid)))
+
+# Combine grid with typical values
+predict_data <- bind_cols(grid, numeric_vars, non_numeric_vars)
+
+# Predict PremiumPrice using the regression tree model
+grid$Predicted <- predict(model_tree, newdata = predict_data)
+
+# Plot contour heatmap
+ggplot(grid, aes(x = Age, y = Weight, fill = Predicted)) +
+  geom_tile() +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(
+    title = "Predicted PremiumPrice by Age and Weight",
+    x = "Age",
+    y = "Weight",
+    fill = "Predicted\nPremiumPrice"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#Training RMSE
+library(Metrics)
+train_rmse_tree <- rmse(train$PremiumPrice, tree_pred)
+
+# Extract minimum cross-validation error (xerror)
+min_xerror <- min(model_tree$cptable[,"xerror"])
+root_node_error <- model_tree$cptable[1, "rel error"]
+
+# Convert xerror (relative) into actual RMSE estimate:
+cv_rmse_tree <- sqrt(min_xerror * model_tree$frame$dev[1] / nrow(train))
+```
+
+## Comparison
+```{r}
+library(knitr)
+
+# Create the same data frame
+model_comparison <- data.frame(
+  Model = c("Linear Model", "Regression Tree"),
+  Training_RMSE = c(round(lm_train_rmse, 2), round(train_rmse_tree, 2)),
+  CV_RMSE = c(round(mean(pred_lm_cv_rmse), 2), round(cv_rmse_tree, 2))
+)
+
+# Print formatted table
+kable(model_comparison, caption = "Comparison of Training and CV RMSE for Both Models")
+```
+
+------------------
+RMSE(Root Mean Squared Error) is in the same units as the target variable, making it easier to interpret. **Training RMSE** measures the average prediction error on the data the model was trained on. **CV RMSE** measures the model’s ability to generalize, based on cross-validation (i.e., how well it would perform on unseen data).
+
+The *Regression Tree* has both lower training and CV RMSE, which means:
+It fits the training data more closely.
+It also generalizes better to unseen data, as shown by lower CV RMSE.
+
+# Ensemble Methods
+## Bagging
+### (Random Forest)
+```{r}
+library(randomForest)  # For Random Forest modeling
+library(caret)         # For training and cross-validation
+library(dplyr)         # For data manipulation
+library(tibble)        # For cleaner result tables
+
+# Use the same training data as for the regression tree
+train_rf <- train
+
+#ntree: number of trees to grow in the forest
+
+# Define grid of hyperparameters to tune:
+# - mtry: number of variables randomly sampled at each split
+tune_grid <- expand.grid(mtry = c(2, 4, 6, 8))
+
+# Set up 5-fold cross-validation
+control <- trainControl(method = "cv", number = 5)
+
+# Train Random Forest model using caret::train
+# This performs grid search over the tuning grid and evaluates RMSE for each
+set.seed(123)
+rf_tuned <- train(
+  PremiumPrice ~ .,         # Target variable is PremiumPrice
+  data = train_rf,          # Use the training data
+  method = "rf",            # Random Forest
+  metric = "RMSE",          # Use RMSE as evaluation metric
+  tuneGrid = tune_grid,     # Provide the tuning grid
+  trControl = control       # Provide the CV setup
+)
+
+# Display results of tuning
+print(rf_tuned)     # Best hyperparameters + their RMSE
+plot(rf_tuned)      # Visual plot of tuning results
+```
+
+We tested four different values of *mtry* (number of variables considered at each split): 2, 4, 6, and 8. As can be seen,among all Cross-Validation RMSEs, the best CV-RMSE is for *mtry* = 6, because it has the lowest CV-RMSE (3071.268).
+
+```{r}
+# using the trained Random Forest model (rf_tuned).
+# The model rf_tuned already contains the best hyperparameters found by caret,
+# including mtry = 6, which was selected based on the lowest cross-validation RMSE.
+train_pred_rf <- predict(rf_tuned, newdata = train_rf)
+
+# Calculate (RMSE) on the final model (with mtry = 6) fits the training data.
+train_rmse_rf <- RMSE(train_pred_rf, train_rf$PremiumPrice)
+
+
+# Get best CV RMSE from caret tuning results
+cv_rmse_rf <- min(rf_tuned$results$RMSE)
+
+# Create a summary table to report RMSE values
+result_table <- tibble(
+  Model = "Random Forest",
+  Training_RMSE = train_rmse_rf,
+  CV_RMSE = cv_rmse_rf
+)
+
+# Print the results
+print(result_table)
+```
+
+After training the final model using this best configuration, we evaluated its performance on the training data. The training RMSE was 1588.918, which is considerably lower than the CV RMSE, suggesting some degree of overfitting. However, the model still generalizes reasonably well, as indicated by the CV RMSE.
+These results demonstrate that tuning *mtry* has a significant impact on performance, and it's important to assess both training and cross-validation loss to understand the model's ability to generalize.
+
+## Boosting
+### GBM (Gradient Boosting Machine)
+```{r}
+
+library(caret)
+library(gbm)
+
+# Define a custom tuning grid with multiple hyperparameters
+gbm_grid <- expand.grid(
+  interaction.depth = 1:5,                  # Max depth of each tree
+  n.trees = c(500, 1000, 2000, 5000),       # Number of boosting iterations (trees)
+  shrinkage = c(0.1, 0.01, 0.001),          # Learning rate (smaller = slower learning, more trees needed)
+  n.minobsinnode = c(10, 20)                # Minimum number of observations in terminal nodes
+)
+
+# Cross-validation settings
+train_settings <- trainControl(method = "cv", number = 5)
+
+# Train GBM model with the defined grid and CV
+caret_gbm <- train(
+  PremiumPrice ~ ., 
+  data = train, 
+  method = "gbm",                # GBM model method
+  trControl = train_settings,
+  tuneGrid = gbm_grid,
+  verbose = FALSE                # Suppress verbose output from gbm
+)
+
+# Show only first few results (summary)
+head(caret_gbm$results)
+```
+
+```{r}
+plot(caret_gbm)
+```
+
+We used cross-validated RMSE to investigate different hyperparameter combinations for the Gradient Boosting model. From the tuning results, we observed that:
+
+- Smaller *shrinkage* values (like 0.001) led to much higher RMSE, indicating underfitting.
+
+- Increasing tree depth *(interaction.depth)* generally improved performance up to a point, after which gains leveled off.
+
+- Using 10 observations per node gave better performance than 20.
+
+- Based on the first few rows, for example, a relatively low RMSE (~3557) was observed with *shrinkage = 0.1*, *interaction.depth = 1*, and *n.minobsinnode = 10*.
+
+```{r}
+library(caret)
+library(dplyr)
+library(tibble)
+library(gbm)
+
+# Predict on the training data using the final (best) GBM model
+train_pred_gbm <- predict(caret_gbm, newdata = train)
+
+# Calculate Training RMSE of the best model
+train_rmse_gbm <- RMSE(train_pred_gbm, train$PremiumPrice)
+
+# Get the best CV RMSE from the tuning results
+cv_rmse_gbm <- min(caret_gbm$results$RMSE)
+
+caret_gbm$bestTune
+
+# Create a summary table to display results
+result_table_gbm <- tibble(
+  Model = "Gradient Boosting",
+  Training_RMSE = train_rmse_gbm,
+  CV_RMSE = cv_rmse_gbm
+)
+print(result_table_gbm)
+```
+
+The Gradient Boosting model was evaluated using RMSE (Root Mean Squared Error), a standard metric for regression problems that measures the average magnitude of prediction errors in the same unit as the target variable (₹ in this case).
+
+Training RMSE: 2853.15
+This indicates how well the model fits the training data. A lower value means the model can predict the premium prices accurately on the data it was trained on.
+
+Cross-Validation (CV) RMSE: 3223.96
+This estimates the model's performance on unseen data using 5-fold cross-validation. It reflects how well the model is expected to generalize to new data.
+
+The fact that the CV RMSE is only moderately higher than the training RMSE suggests that:
+The model fits the training data well.
+There is no major overfitting (i.e., the model’s good performance is not limited only to training data).
+The GBM model appears to generalize reasonably well.
+
+## Ensemble methods comparison and best Configurations
+Both ensemble models — Random Forest (RF) and Gradient Boosting Machine (GBM) — were trained and evaluated using 5-fold cross-validation, with Root Mean Squared Error (RMSE) as the consistent evaluation metric. The Random Forest model achieved a **Training RMSE of 1588.92** and a **CV RMSE of 3071.27**, while the GBM model produced a **Training RMSE of 2853.15** and a **CV RMSE of 3223.96**. Based on the lower CV RMSE, Random Forest outperformed GBM in terms of generalization to unseen data.
+
+The best hyperparameter configuration for Random Forest was found to be **mtry = 6**, which controls the number of predictors randomly selected at each tree split. For GBM, the best performance was obtained using **interaction.depth = 5**, **n.trees = 500**, **shrinkage = 0.01**, and **n.minobsinnode = 10**. These configurations were selected based on the minimum RMSE values observed during cross-validation tuning.
+
+In conclusion, **the Random Forest model** with mtry = 6 was selected as the best-performing ensemble model due to its superior cross-validation performance, indicating stronger predictive capability and better generalization for modeling insurance premium prices.
+
+# Neural Networks
+```{r}
+# Remove target variable from X
+X_raw <- data[, setdiff(names(data), "PremiumPrice")]
+
+# Convert all columns in X to numeric
+X <- as.matrix(data.frame(lapply(X_raw, function(col) as.numeric(as.character(col)))))
+
+# Convert target to numeric matrix
+y <- as.matrix(data$PremiumPrice)
+
+# Normalize the input features using a Keras normalization layer
+library(keras3)                         # Without normalization:Features on larger scales dominate learning
+normalize <- layer_normalization()      # Create normalization layer
+normalize %>% adapt(data = X)           # Compute mean & variance from data and store it inside the layer
+
+
+print(normalize$mean)
+print(normalize$variance)  # Variance of features
+```
+```{r}
+library(keras3)
+# 1. Define the architecture: sequential model
+model <- keras_model_sequential()
+
+# 2. Add layers step by step
+model %>%
+  
+  # Layer 1: Normalization (standardizes inputs, we adapted it earlier)
+  normalize %>%
+  
+  # Layer 2: Hidden layer with 8 neurons and ReLU activation
+  layer_dense(
+    name = "HiddenLayer",   # Optional name for layer
+    units = 8,              # Number of neurons, a starting point
+    activation = "relu"     # ReLU is good for most hidden layers
+  ) %>%                    # Keeps positive signals, zeroes out negative ones. Helps train deep models effectively
+  
+  # Layer 3: Output layer with 1 neuron for numeric prediction
+  layer_dense(
+    name = "OutputLayer",     # Optional name
+    units = 1                 # One output = predicted PremiumPrice
+    # No activation = linear by default (good for regression)
+  )
+
+# 3. Inspect the model structure
+summary(model)
+```
+986 rows (observations) and 10 features (columns). The normalization layer: stores mean (10 features) → 10 params, stores variance (10 features) → 10 params, Plus 1 bias-like term (often added internally by Keras) → 1 param
+Total: 10 + 10 + 1 = 21 parameters, all of which are not trainable.
+HiddenLayer and OutputLayer show 0 (unbuilt) — this just means the model hasn't been compiled and trained yet, so it hasn't figured out how many parameters it will train.
+
+```{r}
+library(keras3)
+
+# Compile the model: define how it should learn
+model %>% compile(
+  loss = "mse",         # Use Mean Squared Error (MSE) for regression
+  optimizer = "adam"    # Use the Adam optimizer (advanced gradient descent)
+)
+
+# Train (fit) the model using the data
+model_nn <- model %>% fit(
+  x = X,                # input features (10 columns)
+  y = y,                # target: PremiumPrice
+  epochs = 500,         # Repeats learning 500 times to improve performance
+  verbose = 0           # 0 means silent; set to 1 to see progress
+)
+
+plot(model_nn)
+```
+The loss curve shows a steady and consistent decline in training loss over 500 epochs, indicating that the model successfully learned from the data. The absence of fluctuations or plateaus suggests stable convergence. There is no sign of overfitting within this training period, and the learning process appears well-behaved using the chosen architecture and optimizer settings.
+
+```{r}
+library(Metrics)  # for RMSE function
+library(lattice)
+# Predict on training data
+y_pred_train <- predict(model, X)
+
+# Calculate RMSE on training data
+rmse_train <- rmse(actual = y, predicted = y_pred_train)
+
+library(keras3)
+library(tidyverse)  # for data manipulation
+library(caret)      # for creating folds
+
+set.seed(123)
+# Create 5 folds (subsets) of the data for cross-validation
+# y is the target variable
+# Each fold will be used once as a validation set, the rest as training data
+folds <- createFolds(y, k = 5, list = TRUE, returnTrain = FALSE)
+
+cv_rmse <- c()  # to store RMSEs from each fold
+
+# Start a loop over the 5 folds for manual cross-validation
+for (i in 1:5) {
+  
+  cat("Running Fold", i, "\n")   # Print the current fold number being processed
+  
+  # Get the indices of the current fold to be used as validation data
+  val_indices <- folds[[i]]
+  # Create training set by removing the validation fold from the full dataset
+  X_train <- X[-val_indices, , drop = FALSE]   # Drop FALSE keeps matrix structure
+  y_train <- y[-val_indices, , drop = FALSE]
+  # Create validation set using only the indices of the current fold
+  X_val <- X[val_indices, , drop = FALSE]
+  y_val <- y[val_indices, , drop = FALSE]
+  
+  # Normalize on training data
+  normalize <- layer_normalization()
+  normalize %>% adapt(X_train)
+  
+  # Build model (same architecture as before)
+  model_cv <- keras_model_sequential() %>%
+    normalize() %>%
+    layer_dense(units = 8, activation = "relu", name = "HiddenLayer") %>%
+    layer_dense(units = 1, name = "OutputLayer")
+  
+  # Compile
+  model_cv %>% compile(
+    loss = "mse",
+    optimizer = "adam"
+  )
+  
+  # Fit
+  model_cv %>% fit(
+    x = X_train,
+    y = y_train,
+    epochs = 500,
+    verbose = 0
+  )
+  
+  # Predict on validation set
+  y_pred_val <- predict(model_cv, X_val)
+  
+  # Compute RMSE
+  fold_rmse <- rmse(y_val, y_pred_val)
+  cv_rmse <- c(cv_rmse, fold_rmse)
+}
+
+mean_cv_rmse <- mean(cv_rmse)
+print(paste("Average CV RMSE:", round(mean_cv_rmse, 2)))
+print(rmse_train)
+```
+We trained a neural network model using one hidden layer with 8 ReLU neurons. The model achieved a Training RMSE of approximately 22034.11 and a Cross-Validation RMSE of approximately 23211.1.
+
+### Configuration 2: More Neurons(32 neurons)
+```{r}
+library(keras3)
+library(tidyverse)
+library(caret) 
+library(Metrics)
+
+# Define the normalization layer
+normalize_layer <- layer_normalization()
+normalize_layer %>% adapt(X)
+
+# Build the model
+model2 <- keras_model_sequential() %>%
+  normalize_layer %>%                                # Preprocessing: normalize input
+  layer_dense(units = 32, activation = "relu",        # Hidden layer with 32 neurons
+              name = "HiddenLayer") %>%
+  layer_dense(units = 1, name = "OutputLayer")        # Output layer
+
+# Compile the model
+model2 %>% compile(
+  loss = "mse",
+  optimizer = "adam"
+)
+
+# train the model
+model_nn2 <- model2 %>% fit(
+  x = X,
+  y = y,
+  epochs = 500,
+  verbose = 0
+)
+
+# Evaluate model2
+train_pred2 <- model2 %>% predict(X)
+rmse_train2 <- sqrt(mean((train_pred2 - y)^2))
+
+# 5-fold CV RMSE
+folds <- cut(seq(1, nrow(X)), breaks = 5, labels = FALSE)
+cv_rmse2 <- c()
+for(i in 1:5){
+  test_idx <- which(folds == i)
+  X_train <- X[-test_idx,]
+  y_train <- y[-test_idx,]
+  X_test <- X[test_idx,]
+  y_test <- y[test_idx,]
+
+  # Create and train the model again on this fold
+  model_cv <- keras_model_sequential() %>%
+    normalize_layer %>%
+    layer_dense(units = 32, activation = "relu") %>%
+    layer_dense(units = 1)
+
+  model_cv %>% compile(
+    loss = "mse",
+    optimizer = "adam"
+  )
+
+  model_cv %>% fit(x = X_train, y = y_train, epochs = 500, verbose = 0)
+
+  preds <- model_cv %>% predict(X_test)
+  rmse <- sqrt(mean((preds - y_test)^2))
+  cv_rmse2 <- c(cv_rmse2, rmse)
+}
+print(rmse_train2)
+mean(cv_rmse2)  # CV RMSE for configuration 2
+```
+### Configuration 3: Two Hidden Layers
+```{r}
+# Define normalization layer
+normalize_layer <- layer_normalization()
+normalize_layer %>% adapt(X)
+
+# Build the Neural Network with two hidden layers
+model3 <- keras_model_sequential()
+
+model3 %>%
+  normalize_layer %>%                              # Layer 1: Normalize input features
+  layer_dense(units = 16, activation = "relu",     # Layer 2: First hidden layer with 16 neurons
+              name = "HiddenLayer1") %>%
+  layer_dense(units = 8, activation = "relu",      # Layer 3: Second hidden layer with 8 neurons
+              name = "HiddenLayer2") %>%
+  layer_dense(units = 1, name = "OutputLayer")     # Layer 4: Output layer for regression
+
+# Compile the model
+model3 %>% compile(
+  loss = "mse",           # Loss function: Mean Squared Error for regression
+  optimizer = "adam"      # Optimizer: Adam (efficient gradient descent)
+)
+
+# Train the model
+model_nn3 <- model3 %>% fit(
+  x = X,
+  y = y,
+  epochs = 500,           # Number of training epochs
+  verbose = 0             # Suppress output while training
+)
+
+# Predict on training data
+train_pred3 <- model3 %>% predict(X)
+
+# Calculate Training RMSE
+rmse_train3 <- sqrt(mean((train_pred3 - y)^2))
+cat("Training RMSE (2 hidden layers):", round(rmse_train3, 2), "\n")
+
+# perform 5-Fold Cross-Validation
+set.seed(123)
+folds <- cut(seq(1, nrow(X)), breaks = 5, labels = FALSE)
+cv_rmse3 <- c()
+
+for (i in 1:5) {
+  # Split data
+  test_idx <- which(folds == i)
+  X_train <- X[-test_idx, ]
+  y_train <- y[-test_idx, ]
+  X_test <- X[test_idx, ]
+  y_test <- y[test_idx, ]
+
+  # Build model again with same architecture
+  model_cv <- keras_model_sequential() %>%
+    normalize_layer %>%
+    layer_dense(units = 16, activation = "relu") %>%
+    layer_dense(units = 8, activation = "relu") %>%
+    layer_dense(units = 1)
+
+  model_cv %>% compile(
+    loss = "mse",
+    optimizer = "adam"
+  )
+
+  model_cv %>% fit(x = X_train, y = y_train, epochs = 500, verbose = 0)
+
+  # Predict and calculate RMSE for this fold
+  preds <- model_cv %>% predict(X_test)
+  rmse <- sqrt(mean((preds - y_test)^2))
+  cv_rmse3 <- c(cv_rmse3, rmse)
+}
+
+# Calculate average CV RMSE
+mean_cv_rmse3 <- mean(cv_rmse3)
+cat("Average CV RMSE (2 hidden layers):", round(mean_cv_rmse3, 2), "\n")
+```
+### Comparison Neural Network Configurations
+```{r}
+# Create a data frame with results of all 3 configurations
+nn_results <- data.frame(
+  Configuration = c("1 Hidden Layer (8 neurons)", 
+                    "1 Hidden Layer (32 neurons)", 
+                    "2 Hidden Layers (16 + 8 neurons)"),
+  Train_RMSE = c(22034.11 , 13164.1, 3733.3),
+  CV_RMSE = c(23211.11, 18340.03, 4008.88)
+)
+
+print(nn_results)
+```
+Among the three neural network configurations tested, Configuration 3 **(two hidden layers)** achieved the best performance with a Training RMSE of 3733.3 and a CV RMSE of 4008.88. This configuration significantly outperformed the single-layer (Configuration 1: CV RMSE ~23211) and the wide-layer model (Configuration 2: CV RMSE ~18,340). Therefore, **Configuration 3 is selected as the best based on the RMSE evaluation metric**.
+
+# Model Comparison
+```{r}
+# Create a summary data frame
+model_comparison <- data.frame(
+  Model = c("Linear Model", 
+            "Regression Tree", 
+            "Random Forest", 
+            "Gradient Boosting (GBM)", 
+            "Neural Network (2 Hidden Layers)"),
+  Training_RMSE = c(3847.17, 3224.39, 1588.92, 2853.15, 3733.3),
+  CV_RMSE = c(3881.83, 3379.69, 3071.27, 3223.96, 4008.88)
+)
+
+print(model_comparison)
+```
+I evaluated and compared five models using Root Mean Squared Error (RMSE) as the consistent evaluation metric for both training and cross-validation (CV) performance:
+
+- **Random Forest** achieved the **lowest Training RMSE (1588.92) and the lowest CV RMSE (3071.27)** among all models. This suggests it fit the training data well and also generalized best to unseen data.
+
+- Regression Tree and GBM models followed, with CV RMSEs around 3200–3400, indicating decent performance but not as strong as Random Forest.
+
+- The Linear Model showed relatively higher RMSEs, implying underfitting due to its simplicity.
+
+- The Neural Network with two hidden layers had the highest CV RMSE (4008.88), meaning it did not generalize as well in this case — possibly due to overfitting or needing more tuning/data.
+
+# PCA
+```{r}
+# Standardize the input variables
+
+# Standardize the already numeric input matrix (X)
+X_scaled <- scale(X)   # Standardizes each column to mean 0 and standard deviation 1.
+
+# Run PCA using prcomp
+model_pca <- prcomp(X_scaled) #computes principal components from the covariance matrix of the scaled data.
+
+
+summary(model_pca)
+```
+PC1 alone explains 17.5% of the total variance.
+First 3 PCs together explain about 41% of total variance.
+First 5 PCs explain ~61.6%
+```{r}
+# visualize the importance of each principal component
+library(factoextra)
+
+# Plot the variance explained by each principal component
+fviz_eig(model_pca,                # PCA model object
+         addlabels = TRUE          # Show exact values on the bars
+) + 
+  theme(plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+From the plot we see that we can explain ~80-90% of the variance with 7-8 PCs.
+
+```{r}
+# visualizing the cumulative variance explained by the principal components
+library(data.table)  # For efficient data manipulation
+library(ggplot2)
+
+# Create a data table with the variance explained by each PC
+df_cumsum <- data.table(
+  Var = model_pca$sdev^2 / sum(model_pca$sdev^2),  # Proportion of variance for each PC
+  PC = 1:length(model_pca$sdev)                    # PC index: PC1, PC2, ...
+)
+
+# Plot cumulative variance explained
+ggplot(data = df_cumsum, aes(x = PC, y = cumsum(Var))) +
+  geom_line(color = "steelblue", size = 1) +        # Line plot of cumulative variance
+  geom_point(color = "darkred", size = 2) +         # Points on the line
+  labs(
+    title = "Cumulative Variance Explained",
+    x = "Principal Component",
+    y = "Cumulative Proportion of Variance"
+  ) +
+  scale_x_continuous(breaks = 1:nrow(df_cumsum)) +  # Show all PCs on x-axis
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),         # Center the title
+    axis.line = element_blank()
+  )
+```
+The cumulative variance plot shows that the first 6 principal components explain just over 70% of the total variance in the input variables. Including up to 8 PCs increases this to ~88%
+
+```{r}
+# PCA score plot(representing PC1 and PC2)
+library(factoextra)
+library(ggplot2)
+
+# Choose a variable to color by: let's use "AnyChronicDiseases"
+# It must be a factor for coloring
+color_var <- as.factor(data$AnyChronicDiseases)
+
+# Create a score plot using the first two principal components (PC1 and PC2)
+fviz_pca_ind(model_pca, 
+             geom.ind = "point",                    # Show data points
+             col.ind = color_var,                  # Color by AnyChronicDiseases (0/1)
+             palette = c("#00AFBB", "#FC4E07"),    # Nice contrasting colors
+             addEllipses = TRUE                    # Optional: adds grouping ellipses
+             ) +
+  ggtitle("PCA Score Plot (Colored by AnyChronicDiseases)") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+Each point represents one person (data row) in the reduced 2D space (PC1 and PC2). AnyChronicDiseases:
+Blue circles = 0 (no chronic disease)
+Red triangles = 1 (has chronic disease)
+Ellipses summarize the overall "cloud" of each group, indicating concentration and spread. The axes represent the first two principal components: Dim1 (dimension,PC1) explains 17.5% of variance. Dim2 (PC2) explains 12.4%.
+There is a lot of overlap between the two groups. The red and blue ellipses are nearly on top of each other. This tells us that the first two PCs do not clearly separate people with chronic diseases from those without.
+This suggests that the first two PCs do not distinguish well between these groups. As PCA is an unsupervised technique, this is expected(it’s not designed to classify, just to summarize variance.)
+
+```{r}
+# PCA Loadings Plot
+
+library(factoextra)
+
+# Plot the variable loadings (contributions of variables to PCs)
+fviz_pca_var(
+  model_pca,            # the PCA model you created
+  col.var = "contrib",  # color arrows based on contribution (more important = darker)
+  repel = TRUE          # avoid overlapping text labels
+) +
+  theme_minimal()   
+```
+NumberOfMajorSurgeries:
+
+- Long arrow pointing down-left (negative PC1 and PC2).Contributes strongly to both components, especially PC1.
+
+Age and Diabetes:
+
+- Long arrows pointing up-left (negative PC1, positive PC2).Also contribute significantly.
+
+Weight:
+
+- Short arrow pointing down-right (positive PC1, negative PC2).Very weak influence on PC1 and PC2.
+
+Height:
+
+- Very short arrow mostly pointing downward.Very small contribution.
+
+The loadings plot reveals that **NumberOfMajorSurgeries**, **Age**, and **Diabetes** contribute most strongly to the first two principal components. Their long vectors indicate high variance in these features. In contrast, variables like **Weight** and **Height** show very small arrows near the origin, suggesting limited influence in this 2D space. The directions also highlight correlations — for example, Age and Diabetes are positively related and negatively correlated with Weight. These patterns help us understand the structure of variance in the dataset.
+
+## Reconstructing Variables
+```{r}
+library(data.table)
+# the original standardized variables for the first row (person)
+original_values <- data.table(Variable = colnames(X_scaled), 
+                              Value = round(as.numeric(X_scaled[1, ]), 2))
+print(original_values)
+```
+
+```{r}
+# Project the first observation into PC space (using all 10 PCs)
+# This gives us the Principal Component coordinates (V^T * x)
+
+PC_coordinates_all <- t(as.matrix(model_pca$rotation)) %*% as.matrix(X_scaled)[1, ]
+PC_coordinates_all <- data.table(PC = paste0("PC", 1:10), 
+                                 Value = round(as.numeric(PC_coordinates_all), 2))
+print(PC_coordinates_all)
+```
+
+```{r}
+# Reconstruct the original standardized values using ALL PCs
+# Formula: V * V^T * x
+
+x_reconstructed_all <- as.matrix(model_pca$rotation) %*%
+                       t(as.matrix(model_pca$rotation)) %*%
+                       as.matrix(X_scaled)[1, ]
+
+x_reconstructed_all <- data.table(Variable = colnames(X_scaled), 
+                                  Value = round(as.numeric(x_reconstructed_all), 2))
+print(x_reconstructed_all)
+```
+
+```{r}
+# Now reduce dimensionality to 8 PCs (based on the earlier cumulative variance plot)
+V_reduced <- as.matrix(model_pca$rotation[, 1:8])
+
+# Project person 1 into reduced PC space (8 PC coordinates)
+PC_coordinates_8 <- t(V_reduced) %*% as.matrix(X_scaled)[1, ]
+PC_coordinates_8 <- data.table(PC = paste0("PC", 1:8), 
+                               Value = round(as.numeric(PC_coordinates_8), 2))
+print(PC_coordinates_8)
+```
+
+```{r}
+# Reconstruct the original variables using only 8 PCs (approximation)
+x_reconstructed_8 <- V_reduced %*% 
+                     t(V_reduced) %*% 
+                     as.matrix(X_scaled)[1, ]
+
+x_reconstructed_8 <- data.table(Variable = colnames(X_scaled), 
+                                Value = round(as.numeric(x_reconstructed_8), 2))
+print(x_reconstructed_8)
+```
+PCA with 8 components gives a good approximation, especially for certain variables. Some loss of detail is expected — that’s the trade-off in dimensionality reduction.
+For most variables like Weight, Height, Surgeries, and HistoryOfCancerInFamily, the reconstruction is quite close. For some others (e.g., Age, BloodPressureProblems, Diabetes), the reconstruction error is larger, especially for Age.
+
+```{r}
+# Measure reconstruction error across all data points, using MAE 
+
+# Create a list to store the results for each number of PCs used
+results <- list()
+
+# Loop through 1 to 10 PCs to see how many are needed for a good reconstruction
+for (pcs in 1:10) {
+  
+  # Reconstruct the data using only the first `pcs` principal components
+  reconstructed <- as.matrix(model_pca$rotation[, 1:pcs]) %*% 
+                   t(as.matrix(model_pca$rotation[, 1:pcs])) %*% 
+                   t(as.matrix(X_scaled))
+  
+  # Calculate MAE = average absolute difference between original and reconstructed
+  mae <- mean(rowMeans(abs(t(as.matrix(X_scaled)) - reconstructed)))
+  
+  # Store the result (how many PCs and what MAE it gave)
+  results[[pcs]] <- data.table("PCs_used" = pcs,
+                               "MAE" = mae)
+}
+
+# Combine results into one data table
+dt_reconstruction <- rbindlist(results)
+
+# Show the result rounded to 2 decimals, ordered by number of PCs
+print(round(dt_reconstruction[order(-PCs_used)], 2))
+```
+PCA reconstruction results show that using **8 principal components** preserves most of the information in the original data with a mean absolute reconstruction error of only **~0.24**. This suggests that dimensionality can be reduced from 10 to 8 without a substantial loss in data quality, supporting the idea of using the first 8 PCs in subsequent modeling steps.
+
+## PCA: Linear Model
+```{r}
+
+# Convert the first 8 principal components into a data frame
+X_pc8 <- as.data.frame(model_pca$x[, 1:8])
+
+# Add the target variable PremiumPrice
+X_pc8$PremiumPrice <- data$PremiumPrice
+
+# Train linear model using the 8 principal components
+model_lm_pc8 <- lm(PremiumPrice ~ ., data = X_pc8)
+
+# Predict on training set
+pred_train_lm_pc8 <- predict(model_lm_pc8, newdata = X_pc8)
+
+# Calculate training RMSE
+rmse_train_lm_pc8 <- sqrt(mean((pred_train_lm_pc8 - X_pc8$PremiumPrice)^2))
+
+library(caret)
+
+# Define CV settings
+train_control <- trainControl(method = "cv", number = 5)
+
+# Train model using caret to get CV RMSE
+caret_lm_pc8 <- train(PremiumPrice ~ ., data = X_pc8,
+                      method = "lm",
+                      trControl = train_control)
+
+# Extract CV RMSE
+cv_rmse_lm_pc8 <- caret_lm_pc8$results$RMSE
+print(paste("CV RMSE:", round(cv_rmse_lm_pc8, 2)))
+print(paste("Training RMSE:", round(rmse_train_lm_pc8, 2)))
+```
+
+## PCA: Regression Tree
+```{r}
+library(rpart)
+library(rpart.plot)
+
+# Fit a regression tree model
+model_tree_pc8 <- rpart(PremiumPrice ~ ., data = X_pc8, method = "anova")
+
+# Predict on training data
+pred_train_tree_pc8 <- predict(model_tree_pc8, newdata = X_pc8)
+
+# Calculate training RMSE
+rmse_train_tree_pc8 <- sqrt(mean((pred_train_tree_pc8 - X_pc8$PremiumPrice)^2))
+
+# Define cross-validation control
+train_control <- trainControl(method = "cv", number = 5)
+
+# Train the tree model with CV using caret
+caret_tree_pc8 <- train(PremiumPrice ~ ., 
+                        data = X_pc8, 
+                        method = "rpart", 
+                       trControl = train_control)
+# caret automatically tries different complexity parameter (cp) values during training
+# Get lowest CV RMSE
+best_cv_rmse_tree_pc8 <- min(caret_tree_pc8$results$RMSE)
+print(paste("Best CV RMSE:", round(best_cv_rmse_tree_pc8, 2)))
+print(paste("Training RMSE:", round(rmse_train_tree_pc8, 2)))
+
+# Plot the tree
+rpart.plot(model_tree_pc8, main = "Regression Tree (Top 8 PCs)")
+```
+
+## PCA: Random Forest
+```{r}
+library(randomForest)
+library(caret)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Recreate top 8 principal components using X_scaled
+model_pca <- prcomp(X_scaled, center = FALSE, scale. = FALSE)
+
+# Get top 8 PCs
+pc_data_8 <- as.data.frame(model_pca$x[, 1:8])
+
+# Combine PCs with target variable (PremiumPrice)
+data_rf_pc8 <- cbind(pc_data_8, PremiumPrice = data$PremiumPrice)
+
+
+# Train Random Forest model with specified hyperparameters
+rf_model_pc8 <- randomForest(
+  PremiumPrice ~ .,              # Formula: Predict PremiumPrice using all PCs
+  data = data_rf_pc8,            # Data with top 8 PCs
+  mtry = 6,                      # Number of predictors considered at each split(Selected previously)
+  ntree = 500                    # Number of trees in the forest
+)
+
+# Make predictions on training data to calculate Training RMSE
+pred_train_rf_pc8 <- predict(rf_model_pc8, newdata = data_rf_pc8)
+rmse_train_rf_pc8 <- sqrt(mean((pred_train_rf_pc8 - data_rf_pc8$PremiumPrice)^2))
+
+
+# 5-fold Cross-Validation to get CV RMSE
+train_control_rf <- trainControl(method = "cv", number = 5)
+
+# Use caret to run cross-validation with fixed mtry and ntree
+rf_cv_model_pc8 <- train(
+  PremiumPrice ~ .,
+  data = data_rf_pc8,
+  method = "rf",
+  trControl = train_control_rf,
+  tuneGrid = data.frame(mtry = 6),  # fixed mtry = 6
+  ntree = 500,
+  importance = TRUE
+)
+
+#Extract CV RMSE
+cv_rmse_rf_pc8 <- rf_cv_model_pc8$results$RMSE
+print(paste("CV RMSE:", round(cv_rmse_rf_pc8, 2)))
+print(paste("Training RMSE:", round(rmse_train_rf_pc8, 2)))
+```
+This considerable gap indicates that while the model fits the training data very well, it generalizes less effectively to unseen data; a common sign of overfitting. Though PCA was used to reduce dimensionality, some complexity and variance remain in the transformed features that the model may be overly sensitive to.
+
+## PCA: Gradient Boosting (GBM)
+```{r}
+library(gbm)
+library(caret)
+
+# Prepare data
+X_pc <- pc_data_8  # top 8 PCs
+y_pc <- y          # PremiumPrice as target
+
+# Combine into a dataframe
+data_gbm_pc8 <- data.frame(X_pc, PremiumPrice = y_pc)
+
+# Train the GBM model using the selected hyperparameters
+set.seed(123)
+gbm_model_pc8 <- gbm(
+  formula = PremiumPrice ~ .,
+  distribution = "gaussian",
+  data = data_gbm_pc8,
+  n.trees = 500,
+  interaction.depth = 5,
+  shrinkage = 0.01,
+  n.minobsinnode = 10,
+  verbose = FALSE
+)
+
+# Predict on training set
+train_preds_gbm_pc8 <- predict(gbm_model_pc8, newdata = data_gbm_pc8, n.trees = 500)
+
+# Calculate training RMSE
+rmse_train_gbm_pc8 <- sqrt(mean((train_preds_gbm_pc8 - y_pc)^2))
+
+
+# Cross-validation setup
+set.seed(123)
+cv_folds <- createFolds(y_pc, k = 5, list = TRUE)
+cv_results <- c()
+
+for (i in 1:5) {
+  train_idx <- unlist(cv_folds[-i])
+  test_idx <- unlist(cv_folds[i])
+  
+  train_data <- data_gbm_pc8[train_idx, ]
+  test_data  <- data_gbm_pc8[test_idx, ]
+  
+  # Fit GBM on training folds
+  gbm_cv <- gbm(
+    formula = PremiumPrice ~ .,
+    distribution = "gaussian",
+    data = train_data,
+    n.trees = 500,
+    interaction.depth = 5,
+    shrinkage = 0.01,
+    n.minobsinnode = 10,
+    verbose = FALSE
+  )
+  
+  # Predict on validation fold
+  preds <- predict(gbm_cv, newdata = test_data, n.trees = 500)
+  rmse <- sqrt(mean((preds - test_data$PremiumPrice)^2))
+  cv_results[i] <- rmse
+}
+
+# Display results
+print(paste("Training RMSE:", round(rmse_train_gbm_pc8, 2)))
+print(paste("CV RMSE:", round(mean(cv_results), 2)))
+```
+
+## PCA: Neural Network; 2 Hidden Layers (16 + 8 neurons)
+```{r}
+library(keras3)
+
+# Input features (PCs) and target
+X_nn <- pc_data_8
+y_nn <- y
+
+# Clear keras session
+keras3::clear_session()  # resets everything in Keras.
+
+# Ensure X_nn is a numeric matrix
+X_nn <- as.matrix(data.frame(X_nn))
+storage.mode(X_nn) <- "numeric"    # all values inside the matrix are actually stored as numeric data
+
+
+# Normalize inputs using keras normalization layer
+normalize_layer <- layer_normalization()
+normalize_layer %>% adapt(X_nn)
+
+# Build the neural network model
+model_nn_pc <- keras_model_sequential() %>%
+  normalize_layer %>%
+  layer_dense(units = 16, activation = "relu", name = "HiddenLayer1") %>%
+  layer_dense(units = 8, activation = "relu", name = "HiddenLayer2") %>%
+  layer_dense(units = 1, name = "OutputLayer")
+
+# Compile the model
+model_nn_pc %>% compile(
+  loss = "mse",
+  optimizer = "adam"
+)
+
+# Fit the model (training)
+set.seed(123)
+model_history_pc <- model_nn_pc %>% fit(
+  x = X_nn,
+  y = y_nn,
+  epochs = 500,
+  verbose = 0
+)
+
+# Training predictions and RMSE
+train_preds_nn_pc <- predict(model_nn_pc, X_nn)
+rmse_train_nn_pc <- sqrt(mean((train_preds_nn_pc - y_nn)^2))
+
+
+# Cross-validation RMSE (5-fold)
+set.seed(123)
+cv_folds <- createFolds(y_nn, k = 5)
+cv_rmse_nn_pc <- c()
+
+for (i in 1:5) {
+  train_idx <- unlist(cv_folds[-i])
+  test_idx  <- unlist(cv_folds[i])
+  
+  X_train <- X_nn[train_idx, ]
+  y_train <- y_nn[train_idx]
+  X_test  <- X_nn[test_idx, ]
+  y_test  <- y_nn[test_idx]
+  
+  # Normalize again for each fold
+  norm_layer_cv <- layer_normalization()
+  norm_layer_cv %>% adapt(X_train)
+  
+  # Build model again (new model per fold)
+  model_cv <- keras_model_sequential() %>%
+    norm_layer_cv %>%
+    layer_dense(units = 16, activation = "relu") %>%
+    layer_dense(units = 8, activation = "relu") %>%
+    layer_dense(units = 1)
+  
+  model_cv %>% compile(
+    loss = "mse",
+    optimizer = "adam"
+  )
+  
+  # Fit the model on training fold
+  model_cv %>% fit(x = X_train, y = y_train, epochs = 500, verbose = 0)
+  
+  # Predict on test fold
+  preds <- predict(model_cv, X_test)
+  rmse <- sqrt(mean((preds - y_test)^2))
+  cv_rmse_nn_pc[i] <- rmse
+}
+
+# Show results
+print(paste("Training RMSE:", round(rmse_train_nn_pc, 2)))
+print(paste("CV RMSE:", round(mean(cv_rmse_nn_pc), 2)))
+```
+
+# Model Selection
+```{r}
+# Table of Results
+library(data.table)
+library(knitr)  # For clean printing
+
+# Create a data table of model results
+model_results <- data.table(
+  Model = c("Linear Model", "Regression Tree", "Random Forest", 
+            "Gradient Boosting", "Neural Network"),
+  `Train RMSE (No PCA)` = c(3847.17, 3224.39, 1588.92, 2853.15, 3733.3),
+  `CV RMSE (No PCA)` = c(3881.83, 3379.69, 3071.27, 3223.96, 4008.88),
+  `Train RMSE (8 PCs)` = c(4625.12, 4211.62, 1725.55, 3590.84, 4509.83),
+  `CV RMSE (8 PCs)` = c(4673.02, 5608.39, 4160.99, 4282.04, 4775.13)
+)
+
+# Print the table nicely
+kable(model_results, caption = "Model Comparison: RMSE With and Without PCA")
+```
+
+```{r}
+#Chart of Results
+
+library(data.table)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Create the raw results data in wide format
+model_results <- data.table(
+  Model = c("Linear Model", "Regression Tree", "Random Forest", 
+            "Gradient Boosting", "Neural Network"),
+  
+  Train_No_PCA = c(3847.17, 3224.39, 1588.92, 2853.15, 3733.3),
+  CV_No_PCA    = c(3881.83, 3379.69, 3071.27, 3223.96, 4008.88),
+  
+  Train_PCA    = c(4625.12, 4211.62, 1725.55, 3590.84, 4509.83),
+  CV_PCA       = c(4673.02, 5608.39, 4160.99, 4282.04, 4775.13)
+)
+
+# Reshape into long format
+model_long <- melt(model_results, id.vars = "Model", 
+                   variable.name = "Type", value.name = "RMSE")
+
+# Split Type column into Metric and PCA columns
+model_long <- separate(model_long, Type, into = c("Metric", "PCA"), sep = "_")
+
+# Faceted bar plot
+ggplot(model_long, aes(x = Model, y = RMSE, fill = PCA)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7)) +
+  facet_wrap(~ Metric, scales = "free_y") +
+  labs(
+    title = "RMSE Comparison: With vs Without PCA",
+    x = "Model",
+    y = "RMSE",
+    fill = "PCA Applied"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+Model Comparison Based on CV RMSE:
+
+- **Without PCA**, the best model is Random Forest with a CV-RMSE of 3071.27, followed by Regression Tree (3379.69) and GBM (3223.96).
+
+- **With 8 PCs**, all models performed worse in terms of CV-RMSE. The best among them is still Random Forest with a CV RMSE of 4160.99, but this is significantly worse than its performance on original variables.
+
+- **PCA** did not improve model performance for any of the 5 models. It even increased the CV RMSE by over 1000 in most cases.
+
+we conclude that dimensionality reduction via PCA was **not beneficial** in this project, as the original variables already had strong predictive power and relatively low dimensionality.
+
+**The best model** is the one with the lowest CV-RMSE, because it best reflects expected performance on future (test) data. Best Model Overall is **Random Forest without PCA**. It has the lowest CV RMSE (3071.27).
+
+## The expected loss of the best model on the test set
+```{r}
+library(Metrics) #RMSE
+library(randomForest) 
+library(caret)
+
+# Use the trained model (rf_tuned) to predict on the test set
+test_pred_rf <- predict(rf_tuned, newdata = test)
+
+# Calculate RMSE between predicted and actual PremiumPrice on test set
+test_rmse_rf <- RMSE(test_pred_rf, test$PremiumPrice)
+
+# Print final result
+cat("Test RMSE (Expected Loss):", round(test_rmse_rf, 2), "\n")
+```
+This means that on average, the Random Forest model (mtry = 6) makes a **prediction error of ~₹1724.50** when predicting the insurance premium price on new, **unseen data**.
+This value answers this question:
+"If I use this model in the real world to predict new customers' premium prices, how far off will my predictions be on average?"
+The model performed even better on the test set than during cross-validation on the training set CV-RMSE: 3071
